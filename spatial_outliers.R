@@ -4,6 +4,8 @@ library('stringr')
 library('ggplot2')
 library('plyr')
 library('sp')
+library('maptools')
+gpclibPermit()
 
 ##### silly libraries... no titlecase...? ####
 CapLeading <- function (string){
@@ -19,7 +21,7 @@ CapLeading <- function (string){
    }
 
 
-###### SOME NEEDED VARIABLES #############
+###### READ IN ALL DATA; COMBINE SURVEYS #############
 print("Loading variables..")
 if("edu" %in% ls()) {	print("skipping edu load process") } else {
 	edu <- read.csv("~/Dropbox/Nigeria/NMIS - Nigeria/NMIS Data/final_cleaned_data/csv/facility_csvs/Educ_Baseline_PhaseII_all_merged_cleaned_2011Nov21.csv") }
@@ -39,40 +41,22 @@ process <- function(sector, df) {
 	} else if(sector=="water") {
 		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geoid", "water_source_type")))
 	}	
-	names(gpses) <- c("long", "lat", "gps_precision", "lga", "zone", "state", "id", "name")
+	names(gpses) <- c("lat", "long", "gps_precision", "lga", "zone", "state", "id", "name")
 	gpses$lga <- factor(CapLeading(str_replace_all(as.character(gpses$lga), "_", " ")))
 	gpses
 }
 gpses <- rbind(process("education", edu), process("health", health), process("water", water))
 
-####### FIRST PASS -- JUST GRAPH THE DATA in X,Y -- NOT IN USE ANYMORE ############
-just_xy_graphs <- function() {
-	# the plotting function
-	plot <- function(df) {
-	     df$lga = factor(as.character(df$lga))
-	     df$state = factor(as.character(df$state))
-	     with(df, coplot(-y~-x | lga))
-	     #qplot(x, y, data=df) + facet_grid(.~state)
-	}
-	# print to file called lga_x_y_by_state; the .(state) makes the prints state-by-state
-	pdf("lga_y_x_by_state.pdf")
-	d_ply(gpses, .(state), plot, .print=TRUE)
-	dev.off()
-}
-
 ######### Reading the shapefile #############
-#lga_shapes <- read.shapefile("/Users/prabhaspokharel/Dropbox/Nigeria/NMIS - Nigeria/LGA Shape Files/LGA")
-#lga_data <- lga_shapes$dbf$dbf
-#lga_shapes <- convert.to.simple(lga_shapes$shp)
-#LGApolys <- transform(lga_shapes, Name=lga_data[Id, "Name"])
-#polylist <-  dlply(LGApolys, .(Name), function (df) cbind(df$X, df$Y))
-#names(polylist) <- str_replace_all(names(polylist), "-", " ")
+## The following is taken straight from the reading shape files vignette -- cran.r-project.org/web/packages/spatstat/vignettes/shapefiles.pdf
 xx <- readShapeSpatial("/Users/prabhaspokharel/Dropbox/Nigeria/NMIS - Nigeria/LGA Shape Files/LGA.shp", proj4string=CRS("+proj=longlat +datum=WGS84"))
 levels(xx@data$Name) <- str_replace_all(levels(xx@data$Name), "-", " ")
 regions <- slot(xx, "polygons")
 names(regions) <- xx@data$Name
 regions <- lapply(regions, function(x) SpatialPolygons(list(x)))
 windows <- lapply(regions, as.owin)
+
+## For mapping in ggplot, we need to fortify things (and in fact, generate the ggplot polygon map object)
 regions4ggplot <- fortify.SpatialPolygonsDataFrame(model=xx, region='Name')
 maps <- dlply(regions4ggplot, .(id), function(dfdf) {
 		geom_polygon(aes(x=long, y=lat, group=piece), fill=alpha("grey20", 0.2), data=dfdf)
@@ -80,10 +64,10 @@ maps <- dlply(regions4ggplot, .(id), function(dfdf) {
 
 
 ######### Dealing with naming issues #########
-print("Dealing with naming issues..")
 # The issue is that LGA names in shapefile and data are different. This section
 # removes _ and - to make them spaces, matches based on that, and throws away all
 # data that can't be matched this way.
+print("Dealing with naming issues..")
 lga_names_in_data <- ldply(levels(gpses$lga))
 lga_names_in_shp <- names(windows)
 lga_names_in_data$MATCH <- lga_names_in_data$V1 %in% lga_names_in_shp
@@ -99,24 +83,22 @@ inlga <- function(df) {
    thisLGA <- as.character(df[1,"lga"])
    print(thisLGA)
    w <- windows[[thisLGA]]
-   df$inside <- inside.owin(df$lat, df$long, w)
-   df$dists <- distfun(w)(df$lat, df$long)
-#   polygon <- as.data.frame(polylist[thisLGA])
-#   if (length(polygon)==2) names(polygon) <- c("x", "y")
-#   df$inside <- factor(point.in.polygon(as.vector(df$lat), as.vector(df$long), as.vector(polygon$x), as.vector(polygon$y)))
-	df
+   df$inside <- inside.owin(df$long, df$lat, w)
+   df$dists <- distfun(w)(df$long, df$lat) # TODO: this is euclidean-distance in lat/long; revise to something that makes sense in real world.
+   df
 }
 res <- ddply(gpses_matched, .(lga), inlga)
 
 ###### PRINT into pdf ############
 print("Writing data")
 write.csv(res, "~/Code/R/spatial_outliers/spatial_outlier_info.csv")
-draw <- function(fname="lga_inside_outside_with_prec.pdf") {
+draw <- function(fname="lga_inside_outside_with_prec.pdf", testlga=NULL) {
+	if(!is.null(testlga)) {df = subset(df, lga==testlga)}
 	print(paste("Writing pictures to", fname))
 	pdf(fname)
 	d_ply(res, .(lga), .print=TRUE, function(df) {
 		thisLGA <- as.character(df[1,"lga"])
-		ggplot() + layer(data=df, mapping=aes(x=x, y=y, colour=inside, size=ceiling(log(gps_precision))), geom='point') + scale_size(limits = c(1, 6)) + opts(title=thisLGA) + maps[[thisLGA]]
+		ggplot() + layer(data=df, mapping=aes(x=long, y=lat, colour=inside, size=gps_precision), geom='point') + 	scale_color_manual(name="Inside", values=c("TRUE"="darkgreen", "FALSE"="darkred")) + scale_size(name="GPS Precision (meters)") + opts(title=thisLGA) + maps[[thisLGA]]
 	})
 	dev.off()
 }
