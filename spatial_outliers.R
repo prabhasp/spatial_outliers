@@ -35,13 +35,13 @@ process <- function(sector, df) {
 	foo <- data.frame(do.call('rbind', strsplit(as.character(gpscol),' ',fixed=TRUE)))
 	foo <- summarize(foo, y=as.numeric(as.character(X1)), x=as.numeric(as.character(X2)), prec=as.numeric(as.character(X4))) # note, y-axis comes first
 	if (sector=="education") {
-		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geo_id", "school_name")))
+		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geo_id", "school_name")), sector="education")
 	} else if(sector=="health") {
-		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geoid", "facility_name")))
+		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geoid", "facility_name")), sector="health")
 	} else if(sector=="water") {
-		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geoid", "water_source_type")))
+		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geoid", "water_source_type")), sector="water")
 	}	
-	names(gpses) <- c("lat", "long", "gps_precision", "lga", "zone", "state", "id", "name")
+	names(gpses) <- c("lat", "long", "gps_precision", "lga", "zone", "state", "id", "name", "sector")
 	gpses$lga <- factor(CapLeading(str_replace_all(as.character(gpses$lga), "_", " ")))
 	gpses
 }
