@@ -113,6 +113,7 @@ draw <- function(fname="lga_inside_outside_with_prec.pdf", testlga=NULL) {
 		scale_color_manual(name="Inside", values=c("TRUE"="darkgreen", "FALSE"="darkred")) + opts(title=thisLGA) + ggplot_lga_polygons[[thisLGA]] +
 		scale_size(name="GPS Precision (meters)", trans="log2", limits=c(2,256)) 
 	})
+	dev.off()
 }
 
 ######### For when we need real spatial objects; not used now ##########
