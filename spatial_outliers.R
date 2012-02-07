@@ -109,17 +109,15 @@ draw <- function(fname="lga_inside_outside_with_prec.pdf", testlga=NULL) {
 	pdf(fname)
 	d_ply(myres, .(lga), .print=TRUE, function(df) {
 		thisLGA <- as.character(df[1,"lga"])
-		ggplot() + layer(data=df, mapping=aes(x=long, y=lat, colour=inside, size=gps_precision), geom='point') + 	scale_color_manual(name="Inside", values=c("TRUE"="darkgreen", "FALSE"="darkred")) + opts(title=thisLGA) + ggplot_lga_polygons[[thisLGA]] +
+		ggplot() + layer(data=df, mapping=aes(x=long, y=lat, colour=inside, size=gps_precision), geom='point') + 	
+		scale_color_manual(name="Inside", values=c("TRUE"="darkgreen", "FALSE"="darkred")) + opts(title=thisLGA) + ggplot_lga_polygons[[thisLGA]] +
 		scale_size(name="GPS Precision (meters)", trans="log2", limits=c(2,256)) 
 	})
-	dev.off()
 }
-
 
 ######### For when we need real spatial objects; not used now ##########
 #read_spatial_objects <- function () {
 #	xx <- readShapeSpatial("/Users/prabhaspokharel/Dropbox/Nigeria/NMIS - Nigeria/LGA Shape Files/LGA.shp", proj4string=CRS("+proj=longlat +datum=WGS84"))
 #	xx@data <- xx@data[,c("Name", "POP_90")]	
 #}
-
 
