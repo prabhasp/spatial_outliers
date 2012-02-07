@@ -100,12 +100,17 @@ res <- ddply(gpses_matched, .(lga), inlga)
 print("Writing data")
 write.csv(res, "~/Code/R/spatial_outliers/spatial_outlier_info.csv")
 draw <- function(fname="lga_inside_outside_with_prec.pdf", testlga=NULL) {
-	if(!is.null(testlga)) {df = subset(df, lga==testlga)}
+	if(!is.null(testlga)) {
+		myres = subset(res, lga==testlga)
+	} else {
+		myres = res
+	}
 	print(paste("Writing pictures to", fname))
 	pdf(fname)
-	d_ply(res, .(lga), .print=TRUE, function(df) {
+	d_ply(myres, .(lga), .print=TRUE, function(df) {
 		thisLGA <- as.character(df[1,"lga"])
-		ggplot() + layer(data=df, mapping=aes(x=long, y=lat, colour=inside, size=gps_precision), geom='point') + 	scale_color_manual(name="Inside", values=c("TRUE"="darkgreen", "FALSE"="darkred")) + scale_size(name="GPS Precision (meters)") + opts(title=thisLGA) + maps[[thisLGA]]
+		ggplot() + layer(data=df, mapping=aes(x=long, y=lat, colour=inside, size=gps_precision), geom='point') + 	scale_color_manual(name="Inside", values=c("TRUE"="darkgreen", "FALSE"="darkred")) + opts(title=thisLGA) + ggplot_lga_polygons[[thisLGA]] +
+		scale_size(name="GPS Precision (meters)", trans="log2", limits=c(2,256)) 
 	})
 	dev.off()
 }
