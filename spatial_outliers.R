@@ -45,23 +45,31 @@ process <- function(sector, df) {
 	gpses$lga <- factor(CapLeading(str_replace_all(as.character(gpses$lga), "_", " ")))
 	gpses
 }
-gpses <- rbind(process("education", edu), process("health", health), process("water", water))
+if (file.exists("gpses.csv")) {
+	gpses <- read.csv("gpses.csv") 
+} else { 
+	gpses <- rbind(process("education", edu), process("health", health), process("water", water)) 
+}
 
 ######### Reading the shapefile #############
 ## The following is taken straight from the reading shape files vignette -- cran.r-project.org/web/packages/spatstat/vignettes/shapefiles.pdf
-xx <- readShapeSpatial("/Users/prabhaspokharel/Dropbox/Nigeria/NMIS - Nigeria/LGA Shape Files/LGA.shp", proj4string=CRS("+proj=longlat +datum=WGS84"))
-levels(xx@data$Name) <- str_replace_all(levels(xx@data$Name), "-", " ")
-regions <- slot(xx, "polygons")
-names(regions) <- xx@data$Name
-regions <- lapply(regions, function(x) SpatialPolygons(list(x)))
-windows <- lapply(regions, as.owin)
-
-## For mapping in ggplot, we need to fortify things (and in fact, generate the ggplot polygon map object)
-regions4ggplot <- fortify.SpatialPolygonsDataFrame(model=xx, region='Name')
-maps <- dlply(regions4ggplot, .(id), function(dfdf) {
-		geom_polygon(aes(x=long, y=lat, group=piece), fill=alpha("grey20", 0.2), data=dfdf)
-	})
-
+if (("ggplot_lga_polygons" %in% ls()) &&  ("windows" %in% ls())) {
+	print("shapefiles found... skipping loading.")
+} else {
+	print("Loading Shapefiles..")
+	xx <- readShapeSpatial("/Users/prabhaspokharel/Dropbox/Nigeria/NMIS - Nigeria/LGA Shape Files/LGA.shp", proj4string=CRS("+proj=longlat +datum=WGS84"))
+	levels(xx@data$Name) <- str_replace_all(levels(xx@data$Name), "-", " ")
+	regions <- slot(xx, "polygons")
+	names(regions) <- xx@data$Name
+	regions <- lapply(regions, function(x) SpatialPolygons(list(x)))
+	windows <- lapply(regions, as.owin)
+	
+	## For mapping in ggplot, we need to fortify things (and in fact, generate the ggplot polygon map object)
+	regions4ggplot <- fortify.SpatialPolygonsDataFrame(model=xx, region='Name')
+	ggplot_lga_polygons <- dlply(regions4ggplot, .(id), function(dfdf) {
+			geom_polygon(aes(x=long, y=lat, group=piece), fill=alpha("grey20", 0.2), data=dfdf)
+		})
+}
 
 ######### Dealing with naming issues #########
 # The issue is that LGA names in shapefile and data are different. This section
@@ -81,7 +89,6 @@ gpses_matched <- na.omit(subset(gpses, subset=(gpses$lga %in% lga_names_in_data$
 print("Looking at inside/outside datapoints")
 inlga <- function(df) {
    thisLGA <- as.character(df[1,"lga"])
-   print(thisLGA)
    w <- windows[[thisLGA]]
    df$inside <- inside.owin(df$long, df$lat, w)
    df$dists <- distfun(w)(df$long, df$lat) # TODO: this is euclidean-distance in lat/long; revise to something that makes sense in real world.
