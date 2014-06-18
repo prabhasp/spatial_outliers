@@ -5,6 +5,8 @@ library('ggplot2')
 library('plyr')
 library('sp')
 library('maptools')
+library('spatstat')
+library('doBy')
 gpclibPermit()
 
 ##### silly libraries... no titlecase...? ####
@@ -28,20 +30,20 @@ if("edu" %in% ls()) {	print("skipping edu load process") } else {
 if("health" %in% ls()) {	print("skipping health load process") } else {
 	health <- read.csv("~/Dropbox/Nigeria/NMIS - Nigeria/NMIS Data/final_cleaned_data/csv/facility_csvs/Health_PhII_RoundI&II&III_Clean_2011.10.21.csv") }
 if("water" %in% ls()) {	print("skipping water load process") } else {
-	water <- read.csv("~/Dropbox/Nigeria/NMIS - Nigeria/NMIS Data/final_cleaned_data/csv/facility_csvs/Water_Baseline_PhaseII_all_merged_cleaned_09_19_2011.csv") }
+	water <- read.csv("~/Dropbox/Nigeria/NMIS - Nigeria/NMIS Data/final_cleaned_data/csv/facility_csvs/Water_Baseline_PhaseII_all_merged_cleaned_2011Nov21.csv") }
 
 process <- function(sector, df) {
 	gpscol <- if(sector=="education") df$gps else df$geocodeoffacility
 	foo <- data.frame(do.call('rbind', strsplit(as.character(gpscol),' ',fixed=TRUE)))
 	foo <- summarize(foo, y=as.numeric(as.character(X1)), x=as.numeric(as.character(X2)), prec=as.numeric(as.character(X4))) # note, y-axis comes first
 	if (sector=="education") {
-		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geo_id", "school_name")), sector="education")
+		gpses <-  cbind(foo, subset(df, select=c("lga", "ward", "community", "state", "geo_id", "school_name")), sector="education")
 	} else if(sector=="health") {
-		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geoid", "facility_name")), sector="health")
+		gpses <-  cbind(foo, subset(df, select=c("lga", "ward", "community", "state", "geoid", "facility_name")), sector="health")
 	} else if(sector=="water") {
-		gpses <-  cbind(foo, subset(df, select=c("lga", "zone", "state", "geoid", "water_source_type")), sector="water")
+		gpses <-  cbind(foo, subset(df, select=c("lga", "ward", "community", "state", "geoid", "water_source_type")), sector="water")
 	}	
-	names(gpses) <- c("lat", "long", "gps_precision", "lga", "zone", "state", "id", "name", "sector")
+	names(gpses) <- c("lat", "long", "gps_precision", "lga", "ward", "community", "state", "id", "name", "sector")
 	gpses$lga <- factor(CapLeading(str_replace_all(as.character(gpses$lga), "_", " ")))
 	gpses
 }
@@ -59,8 +61,9 @@ if (("ggplot_lga_polygons" %in% ls()) &&  ("windows" %in% ls())) {
 	print("Loading Shapefiles..")
 	xx <- readShapeSpatial("/Users/prabhaspokharel/Dropbox/Nigeria/NMIS - Nigeria/LGA Shape Files/LGA.shp", proj4string=CRS("+proj=longlat +datum=WGS84"))
 	levels(xx@data$Name) <- str_replace_all(levels(xx@data$Name), "-", " ")
+	levels(xx@data$Name) <- str_replace_all(levels(xx@data$Name), "/", " ")
 	regions <- slot(xx, "polygons")
-	names(regions) <- xx@data$Name
+	names(regions) <- CapLeading(xx@data$Name)
 	regions <- lapply(regions, function(x) SpatialPolygons(list(x)))
 	windows <- lapply(regions, as.owin)
 	
@@ -76,11 +79,16 @@ if (("ggplot_lga_polygons" %in% ls()) &&  ("windows" %in% ls())) {
 # removes _ and - to make them spaces, matches based on that, and throws away all
 # data that can't be matched this way.
 print("Dealing with naming issues..")
+
+rewrite_rules = list("Garun Mallam" = "Garum Mallam", "Girei" = "Girie", "Karin Lamido" = "Karim Lamido", "Moya" = "Muya", "Nsit Ubuim" = "Nsit Ubium", "Obi Nwa" = "Obi Nwga", "Ohionmwon"="Orhionmwon", "Omuma"="Omumma", "Oriire" = "Ori Ire", "Kabba/bunu" = "Kabba Bunu", "Kaita"="kaita")
+gpses$lga <- factor(recodeVar(as.character(gpses$lga), names(rewrite_rules), rewrite_rules))
+#TODO: ALSO FIX THE SLASH ERRORS
+
 lga_names_in_data <- ldply(levels(gpses$lga))
-lga_names_in_shp <- names(windows)
+lga_names_in_shp <- names(regions)
 lga_names_in_data$MATCH <- lga_names_in_data$V1 %in% lga_names_in_shp
 
-print(paste("Throwing away", nrow(subset(lga_names_in_data, subset=!MATCH)), "LGAs with name mismatch between data and Shapefile"))
+print(paste("Throwing away", nrow(subset(lga_names_in_data, subset=!MATCH)), "LGAs with name mismatch between data and Shapefile\n", subset(lga_names_in_data, subset=(MATCH==FALSE))))
 lga_names_in_data <- subset(lga_names_in_data, subset=MATCH)
 
 gpses_matched <- na.omit(subset(gpses, subset=(gpses$lga %in% lga_names_in_data$V1)))
